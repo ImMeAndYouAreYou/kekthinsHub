@@ -17,15 +17,16 @@ local camera = workspace.CurrentCamera
 -- Variables
 local HitboxEnabled = false
 local HitboxSize = 13
+local HitboxTransparency = 0.1
 local ESPEnabled = false
 local ESPObjects = {}
 local ESPSettings = {
-    Skeleton = true,
-    Head = true,
-    Body = true,
-    Distance = true,
-    Health = true,
-    Name = true
+    Skeleton = false,
+    Head = false,
+    Body = false,
+    Distance = false,
+    Health = false,
+    Name = false
 }
 local AimbotEnabled = false
 local AimbotKey = Enum.KeyCode.Q
@@ -83,6 +84,18 @@ local HitboxSlider = HitboxTab:CreateSlider({
     end,
 })
 
+local HitboxTransparencySlider = HitboxTab:CreateSlider({
+    Name = "Hitbox Transparency",
+    Range = {0, 1},
+    Increment = 0.1,
+    Suffix = "",
+    CurrentValue = 0.5,
+    Flag = "HitboxTransparency",
+    Callback = function(Value)
+        HitboxTransparency = math.floor(Value * 10) / 10
+    end,
+})
+
 -- ESP Tab
 local ESPTab = Window:CreateTab("ESP", 4483362458)
 
@@ -102,7 +115,7 @@ local ESPMainToggle = ESPTab:CreateToggle({
 
 local ESPSkeletonToggle = ESPTab:CreateToggle({
     Name = "Skeleton",
-    CurrentValue = true,
+    CurrentValue = false,
     Flag = "ESPSkeleton",
     Callback = function(Value)
         ESPSettings.Skeleton = Value
@@ -112,7 +125,7 @@ local ESPSkeletonToggle = ESPTab:CreateToggle({
 
 local ESPHeadToggle = ESPTab:CreateToggle({
     Name = "Head",
-    CurrentValue = true,
+    CurrentValue = false,
     Flag = "ESPHead",
     Callback = function(Value)
         ESPSettings.Head = Value
@@ -122,7 +135,7 @@ local ESPHeadToggle = ESPTab:CreateToggle({
 
 local ESPBodyToggle = ESPTab:CreateToggle({
     Name = "Body",
-    CurrentValue = true,
+    CurrentValue = false,
     Flag = "ESPBody",
     Callback = function(Value)
         ESPSettings.Body = Value
@@ -132,7 +145,7 @@ local ESPBodyToggle = ESPTab:CreateToggle({
 
 local ESPDistanceToggle = ESPTab:CreateToggle({
     Name = "Distance",
-    CurrentValue = true,
+    CurrentValue = false,
     Flag = "ESPDistance",
     Callback = function(Value)
         ESPSettings.Distance = Value
@@ -142,7 +155,7 @@ local ESPDistanceToggle = ESPTab:CreateToggle({
 
 local ESPHealthToggle = ESPTab:CreateToggle({
     Name = "Health",
-    CurrentValue = true,
+    CurrentValue = false,
     Flag = "ESPHealth",
     Callback = function(Value)
         ESPSettings.Health = Value
@@ -152,7 +165,7 @@ local ESPHealthToggle = ESPTab:CreateToggle({
 
 local ESPNameToggle = ESPTab:CreateToggle({
     Name = "Name",
-    CurrentValue = true,
+    CurrentValue = false,
     Flag = "ESPName",
     Callback = function(Value)
         ESPSettings.Name = Value
@@ -207,6 +220,52 @@ local AimbotFOVSlider = AimbotTab:CreateSlider({
     end,
 })
 
+-- Local Player Tab
+local LocalPlayerTab = Window:CreateTab("Local Player", 4483362458)
+
+local WalkSpeedSlider = LocalPlayerTab:CreateSlider({
+    Name = "Walk Speed",
+    Range = {16, 25},
+    Increment = 1,
+    Suffix = " studs/s",
+    CurrentValue = 16,
+    Flag = "WalkSpeed",
+    Callback = function(Value)
+        if plr.Character and plr.Character:FindFirstChildOfClass("Humanoid") then
+            plr.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = Value
+        end
+    end,
+})
+
+local JumpPowerSlider = LocalPlayerTab:CreateSlider({
+    Name = "Jump Power",
+    Range = {7.2, 25},
+    Increment = 0.2,
+    Suffix = "",
+    CurrentValue = 7.2,
+    Flag = "JumpPower",
+    Callback = function(Value)
+        if plr.Character and plr.Character:FindFirstChildOfClass("Humanoid") then
+            plr.Character:FindFirstChildOfClass("Humanoid").JumpPower = Value
+        end
+    end,
+})
+
+-- Keep Walk Speed and Jump Power updated
+coroutine.resume(coroutine.create(function()
+    while wait(0.1) do
+        if plr.Character and plr.Character:FindFirstChildOfClass("Humanoid") then
+            local humanoid = plr.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid.WalkSpeed < 16 or humanoid.WalkSpeed > 25 then
+                humanoid.WalkSpeed = WalkSpeedSlider.CurrentValue
+            end
+            if humanoid.JumpPower < 7.2 or humanoid.JumpPower > 25 then
+                humanoid.JumpPower = JumpPowerSlider.CurrentValue
+            end
+        end
+    end
+end))
+
 -- ESP Functions
 function ClearESP()
     for player, objects in pairs(ESPObjects) do
@@ -243,8 +302,8 @@ function CreateESP(player)
     -- Create ESP Billboard
     local espGui = Instance.new("BillboardGui")
     espGui.Name = "ESP_Gui"
-    espGui.Size = UDim2.new(0, 200, 0, 100)
-    espGui.StudsOffset = Vector3.new(0, 3, 0)
+    espGui.Size = UDim2.new(0, 250, 0, 120)
+    espGui.StudsOffset = Vector3.new(0, 3.5, 0)
     espGui.AlwaysOnTop = true
     espGui.Adornee = rootPart
     espGui.Parent = rootPart
@@ -256,75 +315,107 @@ function CreateESP(player)
     
     table.insert(ESPObjects[player], espGui)
     
-    -- Name Label
+    -- Name Label (Improved styling)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "Name"
-    nameLabel.Size = UDim2.new(1, 0, 0, 20)
-    nameLabel.Position = UDim2.new(0, 0, 0, 0)
-    nameLabel.BackgroundTransparency = 1
+    nameLabel.Size = UDim2.new(1, -4, 0, 22)
+    nameLabel.Position = UDim2.new(0, 2, 0, 2)
+    nameLabel.BackgroundTransparency = 0.8
+    nameLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.BorderSizePixel = 0
     nameLabel.Text = player.Name
     nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    nameLabel.TextSize = 14
-    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextSize = 16
+    nameLabel.TextStrokeTransparency = 0.5
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
     nameLabel.Parent = espFrame
     table.insert(ESPObjects[player], nameLabel)
     
-    -- Health Label
+    -- Health Label (Improved styling)
     local healthLabel = Instance.new("TextLabel")
     healthLabel.Name = "Health"
-    healthLabel.Size = UDim2.new(1, 0, 0, 20)
-    healthLabel.Position = UDim2.new(0, 0, 0, 20)
-    healthLabel.BackgroundTransparency = 1
+    healthLabel.Size = UDim2.new(1, -4, 0, 18)
+    healthLabel.Position = UDim2.new(0, 2, 0, 26)
+    healthLabel.BackgroundTransparency = 0.8
+    healthLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    healthLabel.BorderSizePixel = 0
     healthLabel.Text = ""
-    healthLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-    healthLabel.TextSize = 12
-    healthLabel.TextStrokeTransparency = 0
+    healthLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+    healthLabel.TextSize = 14
+    healthLabel.TextStrokeTransparency = 0.5
+    healthLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     healthLabel.Font = Enum.Font.Gotham
+    healthLabel.TextXAlignment = Enum.TextXAlignment.Left
     healthLabel.Parent = espFrame
     table.insert(ESPObjects[player], healthLabel)
     
-    -- Distance Label
+    -- Distance Label (Improved styling)
     local distanceLabel = Instance.new("TextLabel")
     distanceLabel.Name = "Distance"
-    distanceLabel.Size = UDim2.new(1, 0, 0, 20)
-    distanceLabel.Position = UDim2.new(0, 0, 0, 40)
-    distanceLabel.BackgroundTransparency = 1
+    distanceLabel.Size = UDim2.new(1, -4, 0, 18)
+    distanceLabel.Position = UDim2.new(0, 2, 0, 46)
+    distanceLabel.BackgroundTransparency = 0.8
+    distanceLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    distanceLabel.BorderSizePixel = 0
     distanceLabel.Text = ""
-    distanceLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
-    distanceLabel.TextSize = 12
-    distanceLabel.TextStrokeTransparency = 0
+    distanceLabel.TextColor3 = Color3.fromRGB(80, 200, 255)
+    distanceLabel.TextSize = 14
+    distanceLabel.TextStrokeTransparency = 0.5
+    distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     distanceLabel.Font = Enum.Font.Gotham
+    distanceLabel.TextXAlignment = Enum.TextXAlignment.Left
     distanceLabel.Parent = espFrame
     table.insert(ESPObjects[player], distanceLabel)
     
-    -- Head Box
+    -- Head Box (Improved styling)
     if head then
         local headBox = Instance.new("BoxHandleAdornment")
         headBox.Name = "ESP_Head"
-        headBox.Size = head.Size
-        headBox.Transparency = 0.5
-        headBox.Color3 = Color3.fromRGB(255, 0, 0)
+        headBox.Size = head.Size + Vector3.new(0.1, 0.1, 0.1)
+        headBox.Transparency = 0.7
+        headBox.Color3 = Color3.fromRGB(255, 50, 50)
         headBox.AlwaysOnTop = true
         headBox.Adornee = head
-        headBox.ZIndex = 1
+        headBox.ZIndex = 2
         headBox.Parent = head
         table.insert(ESPObjects[player], headBox)
+        
+        -- Head outline
+        local headOutline = Instance.new("SelectionBox")
+        headOutline.Name = "ESP_Head_Outline"
+        headOutline.Adornee = head
+        headOutline.Transparency = 0.8
+        headOutline.Color3 = Color3.fromRGB(255, 0, 0)
+        headOutline.Thickness = 0.15
+        headOutline.Parent = head
+        table.insert(ESPObjects[player], headOutline)
     end
     
-    -- Body Box (Torso)
+    -- Body Box (Torso) (Improved styling)
     local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
     if torso then
         local bodyBox = Instance.new("BoxHandleAdornment")
         bodyBox.Name = "ESP_Body"
-        bodyBox.Size = torso.Size
-        bodyBox.Transparency = 0.5
-        bodyBox.Color3 = Color3.fromRGB(0, 255, 0)
+        bodyBox.Size = torso.Size + Vector3.new(0.1, 0.1, 0.1)
+        bodyBox.Transparency = 0.7
+        bodyBox.Color3 = Color3.fromRGB(50, 255, 50)
         bodyBox.AlwaysOnTop = true
         bodyBox.Adornee = torso
-        bodyBox.ZIndex = 1
+        bodyBox.ZIndex = 2
         bodyBox.Parent = torso
         table.insert(ESPObjects[player], bodyBox)
+        
+        -- Body outline
+        local bodyOutline = Instance.new("SelectionBox")
+        bodyOutline.Name = "ESP_Body_Outline"
+        bodyOutline.Adornee = torso
+        bodyOutline.Transparency = 0.8
+        bodyOutline.Color3 = Color3.fromRGB(0, 255, 0)
+        bodyOutline.Thickness = 0.15
+        bodyOutline.Parent = torso
+        table.insert(ESPObjects[player], bodyOutline)
     end
     
     -- Skeleton Lines
@@ -337,9 +428,11 @@ function CreateESP(player)
         
         local line = Instance.new("Beam")
         line.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
-        line.Transparency = NumberSequence.new(0.3)
-        line.Width0 = 0.2
-        line.Width1 = 0.2
+        line.Transparency = NumberSequence.new(0.4)
+        line.Width0 = 0.15
+        line.Width1 = 0.15
+        line.LightEmission = 0.3
+        line.LightInfluence = 0.5
         line.Attachment0 = attachment1
         line.Attachment1 = attachment2
         line.Parent = part1
@@ -407,9 +500,9 @@ coroutine.resume(coroutine.create(function()
                                     obj.Visible = false
                                 elseif obj.Name == "Name" then
                                     obj.Visible = ESPSettings.Name
-                                elseif obj.Name == "ESP_Head" then
+                                elseif obj.Name == "ESP_Head" or obj.Name == "ESP_Head_Outline" then
                                     obj.Visible = ESPSettings.Head
-                                elseif obj.Name == "ESP_Body" then
+                                elseif obj.Name == "ESP_Body" or obj.Name == "ESP_Body_Outline" then
                                     obj.Visible = ESPSettings.Body
                                 elseif obj.ClassName == "Beam" then
                                     obj.Visible = ESPSettings.Skeleton
@@ -435,25 +528,25 @@ coroutine.resume(coroutine.create(function()
                     
                     if char:FindFirstChild("RightUpperLeg") then
                         char.RightUpperLeg.CanCollide = false
-                        char.RightUpperLeg.Transparency = 0.5
+                        char.RightUpperLeg.Transparency = HitboxTransparency
                         char.RightUpperLeg.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
                     end
                     
                     if char:FindFirstChild("LeftUpperLeg") then
                         char.LeftUpperLeg.CanCollide = false
-                        char.LeftUpperLeg.Transparency = 0.5
+                        char.LeftUpperLeg.Transparency = HitboxTransparency
                         char.LeftUpperLeg.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
                     end
                     
                     if char:FindFirstChild("HeadHB") then
                         char.HeadHB.CanCollide = false
-                        char.HeadHB.Transparency = 0.5
+                        char.HeadHB.Transparency = HitboxTransparency
                         char.HeadHB.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
                     end
                     
                     if char:FindFirstChild("HumanoidRootPart") then
                         char.HumanoidRootPart.CanCollide = false
-                        char.HumanoidRootPart.Transparency = 0.5
+                        char.HumanoidRootPart.Transparency = HitboxTransparency
                         char.HumanoidRootPart.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
                     end
                 end
@@ -482,38 +575,31 @@ game[players].PlayerRemoving:Connect(function(player)
 end)
 
 -- Aimbot Functions
-function GetClosestPlayer()
-    local closestPlayer = nil
-    local shortestDistance = AimbotFOV
+function GetPlayerFromPart(part)
+    if not part then return nil end
     
+    -- Check if part belongs to a character
+    local character = part:FindFirstAncestorOfClass("Model")
+    if not character then return nil end
+    
+    -- Find the player that owns this character
     for _, player in pairs(game[players]:GetPlayers()) do
-        if player ~= plr and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and 
-           player.Character:FindFirstChildOfClass("Humanoid") and player.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
-            local character = player.Character
-            local rootPart = character.HumanoidRootPart
-            local head = character:FindFirstChild("Head")
-            
-            if rootPart and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                local screenPoint, onScreen = camera:WorldToViewportPoint(rootPart.Position)
-                local distance = (rootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
-                
-                if onScreen then
-                    local screenDistance = (Vector2.new(screenPoint.X, screenPoint.Y) - Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)).Magnitude
-                    
-                    if screenDistance < shortestDistance then
-                        shortestDistance = screenDistance
-                        closestPlayer = player
-                    end
-                end
+        if player.Character == character and player ~= plr then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 and character:FindFirstChild("HumanoidRootPart") then
+                return player
             end
         end
     end
     
-    return closestPlayer
+    return nil
 end
 
--- Aimbot Input Handler
-game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
+-- Aimbot Input Handler (Click on hitbox to lock)
+local UserInputService = game:GetService("UserInputService")
+local mouse = plr:GetMouse()
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
     if AimbotEnabled then
@@ -527,12 +613,41 @@ game:GetService("UserInputService").InputBegan:Connect(function(input, gameProce
         end
         
         if keyPressed then
-            AimbotTarget = GetClosestPlayer()
+            -- Check what the mouse is targeting (works for both mouse clicks and key presses)
+            local targetPart = nil
+            
+            -- Try to get mouse target
+            pcall(function()
+                targetPart = mouse.Target
+            end)
+            
+            -- If mouse target failed, try using camera raycast as fallback
+            if not targetPart then
+                local cameraRay = camera:ScreenPointToRay(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                raycastParams.FilterDescendantsInstances = {plr.Character}
+                local raycastResult = workspace:Raycast(cameraRay.Origin, cameraRay.Direction * 1000, raycastParams)
+                if raycastResult then
+                    targetPart = raycastResult.Instance
+                end
+            end
+            
+            if targetPart then
+                local targetPlayer = GetPlayerFromPart(targetPart)
+                if targetPlayer then
+                    AimbotTarget = targetPlayer
+                else
+                    AimbotTarget = nil
+                end
+            else
+                AimbotTarget = nil
+            end
         end
     end
 end)
 
-game:GetService("UserInputService").InputEnded:Connect(function(input, gameProcessed)
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
     if AimbotEnabled then
