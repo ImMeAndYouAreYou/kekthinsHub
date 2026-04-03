@@ -35,7 +35,8 @@ for _, Folder in pairs(Folder_Configs) do
 end
 
 -- ========== CUSTOM UI LIBRARY ==========
-local Library do
+local Library = {}
+do
     local wait = task.wait
     local spawn = task.spawn
     local delay = task.delay
@@ -56,29 +57,27 @@ local Library do
         return Success and Result or game:GetService("CoreGui")
     end
 
-    Library = {
-        Theme = {
-            Background = FromRGB(15, 12, 16),
-            Inline = FromRGB(22, 20, 24),
-            Border = FromRGB(41, 37, 45),
-            Text = FromRGB(255, 255, 255),
-            InactiveText = FromRGB(185, 185, 185),
-            Accent = FromRGB(232, 186, 248),
-            Element = FromRGB(36, 32, 39),
-        },
-        Tween = {
-            Time = 0.3,
-            Style = Enum.EasingStyle.Quad,
-            Direction = Enum.EasingDirection.Out
-        },
-        Connections = {},
-        Threads = {},
-        ThemeMap = {},
-        ThemeItems = {},
-        Holder = nil,
-        NotifHolder = nil,
-        Font = nil
+    Library.Theme = {
+        Background = FromRGB(15, 12, 16),
+        Inline = FromRGB(22, 20, 24),
+        Border = FromRGB(41, 37, 45),
+        Text = FromRGB(255, 255, 255),
+        InactiveText = FromRGB(185, 185, 185),
+        Accent = FromRGB(232, 186, 248),
+        Element = FromRGB(36, 32, 39),
     }
+    Library.Tween = {
+        Time = 0.3,
+        Style = Enum.EasingStyle.Quad,
+        Direction = Enum.EasingDirection.Out
+    }
+    Library.Connections = {}
+    Library.Threads = {}
+    Library.ThemeMap = {}
+    Library.ThemeItems = {}
+    Library.Holder = nil
+    Library.NotifHolder = nil
+    Library.Font = nil
 
     Library.__index = Library
 
@@ -102,8 +101,8 @@ local Library do
     Tween.Play = function(self) if self.Tween then self.Tween:Play() end end
     Tween.Clean = function(self) if self.Tween then self:Pause() end; self = nil end
 
-    -- Instance builder
-    local Instances = {}
+    -- Instance builder (now global so it can be used outside this block)
+    Instances = {}  -- <-- FIX: removed 'local'
     Instances.__index = Instances
     Instances.Create = function(self, Class, Properties)
         local Success, Result = pcall(function()
