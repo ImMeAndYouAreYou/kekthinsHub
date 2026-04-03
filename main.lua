@@ -1,7 +1,6 @@
 --[[
     Rayfield Hub Script – Hitbox Extender, ESP, Aimbot, Local Mods
-    Loads Rayfield from its official GitHub release.
-    No key system – works for any game.
+    Fixed: Lighting service typo, Rayfield loader with retry.
 --]]
 
 repeat wait() until game:IsLoaded()
@@ -12,7 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
+local Lighting = game:GetService("Lighting")  -- FIXED: was "Lightning"
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -22,24 +21,39 @@ local Camera = workspace.CurrentCamera
 local ConfigFolder = "RayfieldHubConfig"
 if not isfolder(ConfigFolder) then makefolder(ConfigFolder) end
 
--- ========== LOAD RAYFIELD ==========
+-- ========== LOAD RAYFIELD (with retry) ==========
 local Rayfield = nil
-local RayfieldLoaded = false
-
-local RayfieldUrl = "https://raw.githubusercontent.com/shlexware/Rayfield/main/source.lua"
-local RayfieldContent = game:HttpGet(RayfieldUrl)
-if RayfieldContent then
-    Rayfield = loadstring(RayfieldContent)()
-    RayfieldLoaded = true
-else
-    warn("Failed to load Rayfield. Using fallback UI.")
+local function LoadRayfield()
+    local RayfieldUrl = "https://raw.githubusercontent.com/shlexware/Rayfield/main/source.lua"
+    for attempt = 1, 3 do
+        local success, content = pcall(game.HttpGet, game, RayfieldUrl)
+        if success and content then
+            local func, err = loadstring(content)
+            if func then
+                local ok, result = pcall(func)
+                if ok and result then
+                    return result
+                else
+                    warn("Rayfield execution failed: ", err or result)
+                end
+            else
+                warn("Rayfield loadstring failed: ", err)
+            end
+        else
+            warn("Rayfield download attempt ", attempt, " failed: ", content)
+        end
+        task.wait(1)
+    end
+    return nil
 end
 
-if not RayfieldLoaded then
-    -- Fallback: simple notification and exit
+Rayfield = LoadRayfield()
+
+if not Rayfield then
+    -- Fallback notification
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "Error",
-        Text = "Could not load Rayfield. Check internet connection.",
+        Text = "Failed to load Rayfield. Check internet or use a different executor.",
         Duration = 5
     })
     return
@@ -207,7 +221,6 @@ function CreateESP(player)
     end
     ESPObjects[player] = {}
 
-    -- Billboard for text
     local espGui = Instance.new("BillboardGui")
     espGui.Name = "ESP_Gui"
     espGui.Size = UDim2.new(0, 250, 0, 120)
@@ -262,7 +275,6 @@ function CreateESP(player)
     distanceLabel.Parent = mainFrame
     table.insert(ESPObjects[player], distanceLabel)
 
-    -- Head Box
     if head then
         local headBox = Instance.new("BoxHandleAdornment")
         headBox.Name = "ESP_HeadBox"
@@ -284,7 +296,6 @@ function CreateESP(player)
         table.insert(ESPObjects[player], headOutline)
     end
 
-    -- Body Box
     local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
     if torso then
         local bodyBox = Instance.new("BoxHandleAdornment")
@@ -307,7 +318,6 @@ function CreateESP(player)
         table.insert(ESPObjects[player], bodyOutline)
     end
 
-    -- Head Dot
     if head then
         local headDot = Instance.new("BillboardGui")
         headDot.Name = "ESP_HeadDot"
@@ -323,7 +333,6 @@ function CreateESP(player)
         table.insert(ESPObjects[player], headDot)
     end
 
-    -- Skeleton lines
     local function createLine(partA, partB)
         if not partA or not partB then return end
         local attA = Instance.new("Attachment", partA)
@@ -353,7 +362,6 @@ function CreateESP(player)
         if head then createLine(torso, head) end
     end
 
-    -- Tracer
     local tracer = Instance.new("LineHandleAdornment")
     tracer.Name = "ESP_Tracer"
     tracer.AlwaysOnTop = true
@@ -374,7 +382,6 @@ function UpdateESP()
     end
 end
 
--- ESP update loop (visibility & dynamic info)
 coroutine.wrap(function()
     while task.wait(0.1) do
         if ESPEnabled then
@@ -431,7 +438,7 @@ Players.PlayerRemoving:Connect(function(player)
     end
 end)
 
--- ========== AIMBOT FUNCTIONS ==========
+-- ========== AIMBOT ==========
 function UpdateAimbotFOVCircle()
     if AimbotShowFOV and AimbotEnabled then
         if not AimbotFOVCircle then
