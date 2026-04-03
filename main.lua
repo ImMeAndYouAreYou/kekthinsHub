@@ -1,23 +1,262 @@
--- ==================== LUARMOR KEY SYSTEM (OPTIONAL) ====================
--- Load Luarmor key checker
-local luarmor = loadstring(game:HttpGet("https://sdkapi-public.luarmor.net/library.lua"))()
--- Uncomment and configure if you have a Luarmor account:
--- luarmor:SetScriptId("YOUR_SCRIPT_ID")  -- Get from Luarmor dashboard
--- local key = "USER_INPUT_KEY"  -- You'd get this from a TextBox
--- local isValid, message = luarmor:CheckKey(key)
--- if not isValid then return end  -- Key invalid, stop script
+repeat wait() until game:IsLoaded()
 
--- ==================== SERVICES ====================
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
+-- ========== SERVICES & SETUP ==========
+local cloneref = cloneref or function(o) return o end
+local CoreGui = cloneref(game:GetService("CoreGui"))
+local TweenService = cloneref(game:GetService("TweenService"))
+local UserInputService = cloneref(game:GetService("UserInputService"))
+local Players = cloneref(game:GetService("Players"))
+local TextService = cloneref(game:GetService("TextService"))
+local HttpService = cloneref(game:GetService("HttpService"))
+local Lighting = cloneref(game:GetService("Lighting"))
+local Workspace = cloneref(game:GetService("Workspace"))
+local RunService = cloneref(game:GetService("RunService"))
+
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local Camera = workspace.CurrentCamera
 
--- ==================== VARIABLES ====================
+-- ========== GAME ID (for reference) ==========
+local GameId = tostring(game.GameId)
+local SupportedGames = {
+    ["286090429"] = true, -- Your game
+}
+-- No key system – just runs for any game
+
+-- ========== FOLDER MANAGEMENT (for configs) ==========
+local Folder_Configs = {
+    Directory = "CustomScriptHub",
+    Configs = "CustomScriptHub/Configs",
+}
+for _, Folder in pairs(Folder_Configs) do
+    if not isfolder(Folder) then
+        makefolder(Folder)
+    end
+end
+
+-- ========== CUSTOM UI LIBRARY ==========
+local Library do
+    local wait = task.wait
+    local spawn = task.spawn
+    local delay = task.delay
+
+    local FromRGB = Color3.fromRGB
+    local UDim2New = UDim2.new
+    local UDimNew = UDim.new
+    local Vector2New = Vector2.new
+
+    local TableInsert = table.insert
+    local StringFormat = string.format
+    local InstanceNew = Instance.new
+
+    local function SafeGetUI()
+        local Success, Result = pcall(function()
+            return game:GetService("CoreGui")
+        end)
+        return Success and Result or game:GetService("CoreGui")
+    end
+
+    Library = {
+        Theme = {
+            Background = FromRGB(15, 12, 16),
+            Inline = FromRGB(22, 20, 24),
+            Border = FromRGB(41, 37, 45),
+            Text = FromRGB(255, 255, 255),
+            InactiveText = FromRGB(185, 185, 185),
+            Accent = FromRGB(232, 186, 248),
+            Element = FromRGB(36, 32, 39),
+        },
+        Tween = {
+            Time = 0.3,
+            Style = Enum.EasingStyle.Quad,
+            Direction = Enum.EasingDirection.Out
+        },
+        Connections = {},
+        Threads = {},
+        ThemeMap = {},
+        ThemeItems = {},
+        Holder = nil,
+        NotifHolder = nil,
+        Font = nil
+    }
+
+    Library.__index = Library
+
+    -- Tween helper
+    local Tween = {}
+    Tween.__index = Tween
+    Tween.Create = function(self, Item, Info, Goal, IsRawItem)
+        Item = IsRawItem and Item or Item.Instance
+        Info = Info or TweenInfo.new(Library.Tween.Time, Library.Tween.Style, Library.Tween.Direction)
+        local NewTween = {
+            Tween = TweenService:Create(Item, Info, Goal),
+            Info = Info,
+            Goal = Goal,
+            Item = Item
+        }
+        NewTween.Tween:Play()
+        setmetatable(NewTween, Tween)
+        return NewTween
+    end
+    Tween.Pause = function(self) if self.Tween then self.Tween:Pause() end end
+    Tween.Play = function(self) if self.Tween then self.Tween:Play() end end
+    Tween.Clean = function(self) if self.Tween then self:Pause() end; self = nil end
+
+    -- Instance builder
+    local Instances = {}
+    Instances.__index = Instances
+    Instances.Create = function(self, Class, Properties)
+        local Success, Result = pcall(function()
+            local NewItem = {
+                Instance = InstanceNew(Class),
+                Properties = Properties,
+                Class = Class
+            }
+            setmetatable(NewItem, Instances)
+            for Property, Value in pairs(Properties) do
+                pcall(function() NewItem.Instance[Property] = Value end)
+            end
+            return NewItem
+        end)
+        if Success and Result then return Result end
+        return { Instance = nil, Properties = Properties or {}, Class = Class, _Protected = true }
+    end
+    Instances.AddToTheme = function(self, Properties)
+        if not self.Instance then return end
+        Library:AddToTheme(self, Properties)
+        return self
+    end
+    Instances.Connect = function(self, Event, Callback)
+        if not self.Instance or not self.Instance[Event] then return end
+        return Library:Connect(self.Instance[Event], Callback)
+    end
+    Instances.Tween = function(self, Info, Goal)
+        if not self.Instance then return end
+        return Tween:Create(self, Info, Goal)
+    end
+    Instances.Clean = function(self)
+        if self.Instance then self.Instance:Destroy() end
+        self = nil
+    end
+    Instances.MakeDraggable = function(self)
+        if not self.Instance then return end
+        local Gui = self.Instance
+        local Dragging = false
+        local DragStart, StartPosition, Changed
+        self:Connect("InputBegan", function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+                Dragging = true
+                DragStart = Input.Position
+                StartPosition = Gui.Position
+                if Changed then return end
+                Changed = Input.Changed:Connect(function()
+                    if Input.UserInputState == Enum.UserInputState.End then
+                        Dragging = false
+                        if Changed then Changed:Disconnect(); Changed = nil end
+                    end
+                end)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(Input)
+            if (Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch) and Dragging then
+                local DragDelta = Input.Position - DragStart
+                self:Tween(TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Position = UDim2New(StartPosition.X.Scale, StartPosition.X.Offset + DragDelta.X,
+                                        StartPosition.Y.Scale, StartPosition.Y.Offset + DragDelta.Y)
+                })
+            end
+        end)
+    end
+
+    -- Font loading (optional, fallback to Gotham)
+    local function LoadCustomFont()
+        local FontPath = Folder_Configs.Configs .. "/InterSemibold.font"
+        if not isfile(FontPath) then
+            local FontData = {
+                name = "InterSemibold",
+                faces = { { name = "InterSemibold", weight = 400, style = "Regular", assetId = "rbxassetid://12187365364" } }
+            }
+            writefile(FontPath, HttpService:JSONEncode(FontData))
+        end
+        local Success, AssetId = pcall(getcustomasset, FontPath)
+        if Success then
+            return Font.new(AssetId)
+        end
+        return Font.fromEnum(Enum.Font.Gotham)
+    end
+    Library.Font = LoadCustomFont()
+
+    -- UI creation
+    Library.Holder = Instances:Create("ScreenGui", {
+        Parent = SafeGetUI(),
+        Name = "CustomHub",
+        ZIndexBehavior = Enum.ZIndexBehavior.Global,
+        DisplayOrder = 2,
+        ResetOnSpawn = false
+    })
+
+    Library.NotifHolder = Instances:Create("Frame", {
+        Parent = Library.Holder.Instance,
+        Name = "Notifs",
+        Size = UDim2New(0, 0, 1, 0),
+        Position = UDim2New(1, 0, 0, 0),
+        AnchorPoint = Vector2New(1, 0),
+        BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.X
+    })
+    Instances:Create("UIListLayout", { Parent = Library.NotifHolder.Instance, SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Right, Padding = UDimNew(0, 20) })
+    Instances:Create("UIPadding", { Parent = Library.NotifHolder.Instance, PaddingLeft = UDimNew(0, 12), PaddingRight = UDimNew(0, 12), PaddingTop = UDimNew(0, 12), PaddingBottom = UDimNew(0, 12) })
+
+    Library.Thread = function(self, Func)
+        local thread = coroutine.create(Func)
+        coroutine.wrap(function() coroutine.resume(thread) end)()
+        table.insert(self.Threads, thread)
+        return thread
+    end
+
+    Library.Connect = function(self, Event, Callback)
+        local conn = { Event = Event, Callback = Callback, Connection = nil }
+        self:Thread(function() conn.Connection = Event:Connect(Callback) end)
+        table.insert(self.Connections, conn)
+        return conn
+    end
+
+    Library.AddToTheme = function(self, Item, Properties)
+        Item = Item.Instance or Item
+        local ThemeData = { Item = Item, Properties = Properties }
+        for Property, Value in pairs(Properties) do
+            if type(Value) == "string" then
+                Item[Property] = self.Theme[Value] or Value
+            elseif type(Value) == "function" then
+                Item[Property] = Value()
+            end
+        end
+        table.insert(self.ThemeItems, ThemeData)
+        self.ThemeMap[Item] = ThemeData
+    end
+
+    Library.Notification = function(self, Data)
+        -- Simple notification (can be expanded)
+        local notif = Instances:Create("TextLabel", {
+            Parent = Library.NotifHolder.Instance,
+            Text = Data.Title .. "\n" .. (Data.Description or ""),
+            TextColor3 = Data.Color or FromRGB(255,255,255),
+            BackgroundColor3 = Library.Theme.Background,
+            Size = UDim2New(0, 200, 0, 50),
+            TextWrapped = true,
+            FontFace = Library.Font,
+            TextSize = 12,
+            LayoutOrder = (Library.NotifHolder.Instance:GetChildren()[#Library.NotifHolder.Instance:GetChildren()] or { LayoutOrder = 0 }).LayoutOrder + 1
+        })
+        notif:Tween(TweenInfo.new(0.3), { BackgroundTransparency = 0 })
+        task.wait(Data.Duration or 3)
+        notif:Tween(TweenInfo.new(0.3), { BackgroundTransparency = 1 })
+        task.wait(0.3)
+        notif:Destroy()
+    end
+end
+
+-- ========== FEATURE VARIABLES ==========
 -- Hitbox
 local HitboxEnabled = false
 local HitboxSize = 13
@@ -58,457 +297,7 @@ local FlySpeed = 50
 local FlyBodyVelocity = nil
 local NoClipEnabled = false
 
--- ==================== CUSTOM UI CREATION ====================
-local function CreateCustomUI()
-    -- Main ScreenGui
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "CustomScriptHub"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = CoreGui
-    
-    -- Main Window Frame (draggable)
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 500, 0, 400)
-    mainFrame.Position = UDim2.new(0.5, -250, 0.5, -200)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    mainFrame.BackgroundTransparency = 0.05
-    mainFrame.BorderSizePixel = 0
-    mainFrame.ClipsDescendants = true
-    mainFrame.Parent = screenGui
-    
-    -- Corner rounding
-    local corner = Instance.new("UICorner", mainFrame)
-    corner.CornerRadius = UDim.new(0, 8)
-    
-    -- Title Bar (for dragging)
-    local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 30)
-    titleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-    titleBar.BackgroundTransparency = 0.05
-    titleBar.BorderSizePixel = 0
-    titleBar.Parent = mainFrame
-    local titleCorner = Instance.new("UICorner", titleBar)
-    titleCorner.CornerRadius = UDim.new(0, 8)
-    
-    local titleText = Instance.new("TextLabel")
-    titleText.Size = UDim2.new(1, -40, 1, 0)
-    titleText.Position = UDim2.new(0, 10, 0, 0)
-    titleText.BackgroundTransparency = 1
-    titleText.Text = "Script Hub (Drag me)"
-    titleText.TextColor3 = Color3.fromRGB(255,255,255)
-    titleText.TextSize = 16
-    titleText.Font = Enum.Font.GothamBold
-    titleText.TextXAlignment = Enum.TextXAlignment.Left
-    titleText.Parent = titleBar
-    
-    -- Close button
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 30, 1, 0)
-    closeBtn.Position = UDim2.new(1, -30, 0, 0)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
-    closeBtn.Text = "X"
-    closeBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    closeBtn.TextSize = 16
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.Parent = titleBar
-    closeBtn.MouseButton1Click:Connect(function()
-        screenGui:Destroy()
-    end)
-    
-    -- Tab buttons container
-    local tabContainer = Instance.new("Frame")
-    tabContainer.Size = UDim2.new(1, 0, 0, 40)
-    tabContainer.Position = UDim2.new(0, 0, 0, 30)
-    tabContainer.BackgroundTransparency = 1
-    tabContainer.Parent = mainFrame
-    
-    -- Content container (changes based on tab)
-    local contentFrame = Instance.new("Frame")
-    contentFrame.Size = UDim2.new(1, -20, 1, -80)
-    contentFrame.Position = UDim2.new(0, 10, 0, 75)
-    contentFrame.BackgroundTransparency = 1
-    contentFrame.Parent = mainFrame
-    
-    -- Scrolling frame inside content (for options)
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Size = UDim2.new(1, 0, 1, 0)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.BorderSizePixel = 0
-    scrollFrame.ScrollBarThickness = 6
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scrollFrame.Parent = contentFrame
-    
-    local uiList = Instance.new("UIListLayout")
-    uiList.Padding = UDim.new(0, 8)
-    uiList.SortOrder = Enum.SortOrder.LayoutOrder
-    uiList.Parent = scrollFrame
-    
-    -- Tab data
-    local tabs = {}
-    local currentTab = nil
-    
-    -- Helper: create a toggle
-    local function CreateToggle(parent, name, defaultValue, callback)
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1, -20, 0, 35)
-        frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-        frame.BackgroundTransparency = 0.2
-        frame.BorderSizePixel = 0
-        frame.Parent = parent
-        local fCorner = Instance.new("UICorner", frame)
-        fCorner.CornerRadius = UDim.new(0, 4)
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.7, -10, 1, 0)
-        label.Position = UDim2.new(0, 10, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.TextColor3 = Color3.fromRGB(220,220,220)
-        label.TextSize = 14
-        label.Font = Enum.Font.Gotham
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = frame
-        
-        local toggleBtn = Instance.new("TextButton")
-        toggleBtn.Size = UDim2.new(0, 60, 0, 25)
-        toggleBtn.Position = UDim2.new(1, -70, 0.5, -12.5)
-        toggleBtn.BackgroundColor3 = defaultValue and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(80,80,80)
-        toggleBtn.Text = defaultValue and "ON" or "OFF"
-        toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
-        toggleBtn.TextSize = 12
-        toggleBtn.Font = Enum.Font.GothamBold
-        toggleBtn.BorderSizePixel = 0
-        toggleBtn.Parent = frame
-        local btnCorner = Instance.new("UICorner", toggleBtn)
-        btnCorner.CornerRadius = UDim.new(0, 4)
-        
-        local state = defaultValue
-        toggleBtn.MouseButton1Click:Connect(function()
-            state = not state
-            toggleBtn.BackgroundColor3 = state and Color3.fromRGB(0,200,0) or Color3.fromRGB(80,80,80)
-            toggleBtn.Text = state and "ON" or "OFF"
-            if callback then callback(state) end
-        end)
-        
-        return frame
-    end
-    
-    -- Helper: create slider
-    local function CreateSlider(parent, name, min, max, default, suffix, callback)
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1, -20, 0, 55)
-        frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-        frame.BackgroundTransparency = 0.2
-        frame.BorderSizePixel = 0
-        frame.Parent = parent
-        local fCorner = Instance.new("UICorner", frame)
-        fCorner.CornerRadius = UDim.new(0, 4)
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -10, 0, 20)
-        label.Position = UDim2.new(0, 10, 0, 5)
-        label.BackgroundTransparency = 1
-        label.Text = name .. ": " .. tostring(default) .. suffix
-        label.TextColor3 = Color3.fromRGB(220,220,220)
-        label.TextSize = 13
-        label.Font = Enum.Font.Gotham
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = frame
-        
-        local slider = Instance.new("Frame")
-        slider.Size = UDim2.new(0.9, 0, 0, 4)
-        slider.Position = UDim2.new(0.05, 0, 0.7, 0)
-        slider.BackgroundColor3 = Color3.fromRGB(70,70,75)
-        slider.BorderSizePixel = 0
-        slider.Parent = frame
-        
-        local fill = Instance.new("Frame")
-        fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-        fill.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
-        fill.BorderSizePixel = 0
-        fill.Parent = slider
-        
-        local value = default
-        local dragging = false
-        local function updateSlider(x)
-            local relative = math.clamp((x - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
-            value = min + (max - min) * relative
-            value = math.floor(value * 100) / 100
-            fill.Size = UDim2.new(relative, 0, 1, 0)
-            label.Text = name .. ": " .. tostring(value) .. suffix
-            if callback then callback(value) end
-        end
-        
-        slider.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = true
-                updateSlider(input.Position.X)
-            end
-        end)
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-            end
-        end)
-        UserInputService.InputChanged:Connect(function(input)
-            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                updateSlider(input.Position.X)
-            end
-        end)
-        
-        return frame
-    end
-    
-    -- Helper: create color picker (simplified)
-    local function CreateColorPicker(parent, name, defaultColor, callback)
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1, -20, 0, 40)
-        frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-        frame.BackgroundTransparency = 0.2
-        frame.BorderSizePixel = 0
-        frame.Parent = parent
-        local fCorner = Instance.new("UICorner", frame)
-        fCorner.CornerRadius = UDim.new(0, 4)
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.6, -10, 1, 0)
-        label.Position = UDim2.new(0, 10, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.TextColor3 = Color3.fromRGB(220,220,220)
-        label.TextSize = 13
-        label.Font = Enum.Font.Gotham
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = frame
-        
-        local colorDisplay = Instance.new("Frame")
-        colorDisplay.Size = UDim2.new(0, 50, 0, 25)
-        colorDisplay.Position = UDim2.new(1, -60, 0.5, -12.5)
-        colorDisplay.BackgroundColor3 = defaultColor
-        colorDisplay.BorderSizePixel = 1
-        colorDisplay.BorderColor3 = Color3.fromRGB(255,255,255)
-        colorDisplay.Parent = frame
-        local dispCorner = Instance.new("UICorner", colorDisplay)
-        dispCorner.CornerRadius = UDim.new(0, 4)
-        
-        -- Simple color cycling for demo (you can expand)
-        local colors = {Color3.fromRGB(255,0,0), Color3.fromRGB(0,255,0), Color3.fromRGB(0,0,255), Color3.fromRGB(255,255,0)}
-        local colorIndex = 1
-        colorDisplay.MouseButton1Click:Connect(function()
-            colorIndex = colorIndex % #colors + 1
-            local newColor = colors[colorIndex]
-            colorDisplay.BackgroundColor3 = newColor
-            if callback then callback(newColor) end
-        end)
-        
-        return frame
-    end
-    
-    -- Helper: create dropdown
-    local function CreateDropdown(parent, name, options, default, callback)
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(1, -20, 0, 40)
-        frame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-        frame.BackgroundTransparency = 0.2
-        frame.BorderSizePixel = 0
-        frame.Parent = parent
-        local fCorner = Instance.new("UICorner", frame)
-        fCorner.CornerRadius = UDim.new(0, 4)
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(0.4, -10, 1, 0)
-        label.Position = UDim2.new(0, 10, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = name
-        label.TextColor3 = Color3.fromRGB(220,220,220)
-        label.TextSize = 13
-        label.Font = Enum.Font.Gotham
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = frame
-        
-        local dropdownBtn = Instance.new("TextButton")
-        dropdownBtn.Size = UDim2.new(0, 120, 0, 25)
-        dropdownBtn.Position = UDim2.new(1, -130, 0.5, -12.5)
-        dropdownBtn.BackgroundColor3 = Color3.fromRGB(60,60,70)
-        dropdownBtn.Text = default
-        dropdownBtn.TextColor3 = Color3.fromRGB(255,255,255)
-        dropdownBtn.TextSize = 12
-        dropdownBtn.Font = Enum.Font.Gotham
-        dropdownBtn.BorderSizePixel = 0
-        dropdownBtn.Parent = frame
-        local btnCorner = Instance.new("UICorner", dropdownBtn)
-        btnCorner.CornerRadius = UDim.new(0, 4)
-        
-        local isOpen = false
-        local optionList = nil
-        dropdownBtn.MouseButton1Click:Connect(function()
-            if isOpen then
-                if optionList then optionList:Destroy() end
-                isOpen = false
-                return
-            end
-            optionList = Instance.new("Frame")
-            optionList.Size = UDim2.new(0, 120, 0, #options * 25)
-            optionList.Position = UDim2.new(1, -130, 0, 30)
-            optionList.BackgroundColor3 = Color3.fromRGB(50,50,55)
-            optionList.BorderSizePixel = 0
-            optionList.Parent = frame
-            local listCorner = Instance.new("UICorner", optionList)
-            listCorner.CornerRadius = UDim.new(0, 4)
-            local listLayout = Instance.new("UIListLayout", optionList)
-            listLayout.Padding = UDim.new(0, 2)
-            
-            for _, opt in ipairs(options) do
-                local optBtn = Instance.new("TextButton")
-                optBtn.Size = UDim2.new(1, 0, 0, 25)
-                optBtn.BackgroundColor3 = Color3.fromRGB(60,60,70)
-                optBtn.Text = opt
-                optBtn.TextColor3 = Color3.fromRGB(255,255,255)
-                optBtn.TextSize = 12
-                optBtn.Font = Enum.Font.Gotham
-                optBtn.BorderSizePixel = 0
-                optBtn.Parent = optionList
-                optBtn.MouseButton1Click:Connect(function()
-                    dropdownBtn.Text = opt
-                    if callback then callback(opt) end
-                    optionList:Destroy()
-                    isOpen = false
-                end)
-            end
-            isOpen = true
-        end)
-        
-        return frame
-    end
-    
-    -- Tab creation function
-    local function AddTab(name)
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 100, 1, -5)
-        btn.Position = UDim2.new(#tabs * 0.2, 5, 0, 2.5)
-        btn.BackgroundColor3 = Color3.fromRGB(60,60,70)
-        btn.Text = name
-        btn.TextColor3 = Color3.fromRGB(255,255,255)
-        btn.TextSize = 14
-        btn.Font = Enum.Font.GothamBold
-        btn.BorderSizePixel = 0
-        btn.Parent = tabContainer
-        local btnCorner = Instance.new("UICorner", btn)
-        btnCorner.CornerRadius = UDim.new(0, 4)
-        
-        local contentList = Instance.new("Frame")
-        contentList.Size = UDim2.new(1, 0, 1, 0)
-        contentList.BackgroundTransparency = 1
-        contentList.Visible = false
-        contentList.Parent = scrollFrame
-        local listLayout = Instance.new("UIListLayout", contentList)
-        listLayout.Padding = UDim.new(0, 5)
-        listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        
-        local tab = {button = btn, content = contentList}
-        table.insert(tabs, tab)
-        
-        btn.MouseButton1Click:Connect(function()
-            for _, t in ipairs(tabs) do
-                t.content.Visible = false
-                t.button.BackgroundColor3 = Color3.fromRGB(60,60,70)
-            end
-            contentList.Visible = true
-            btn.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
-            currentTab = tab
-            -- Update canvas size
-            local totalHeight = 0
-            for _, child in ipairs(contentList:GetChildren()) do
-                if child:IsA("Frame") then
-                    totalHeight = totalHeight + child.Size.Y.Offset + listLayout.Padding.Offset
-                end
-            end
-            scrollFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
-        end)
-        
-        if #tabs == 1 then btn.MouseButton1Click:Fire() end
-        return contentList
-    end
-    
-    -- ========== BUILD TABS ==========
-    -- Hitbox Tab
-    local hitboxTab = AddTab("Hitbox")
-    CreateToggle(hitboxTab, "Enable Hitbox", false, function(v) HitboxEnabled = v end)
-    CreateSlider(hitboxTab, "Hitbox Size", 1, 50, 13, " studs", function(v) HitboxSize = v end)
-    CreateSlider(hitboxTab, "Hitbox Transparency", 0, 1, 0.5, "", function(v) HitboxTransparency = v end)
-    CreateColorPicker(hitboxTab, "Hitbox Color", HitboxColor, function(c) HitboxColor = c end)
-    CreateToggle(hitboxTab, "Head Dot (ESP style)", false, function(v) HitboxHeadDot = v end)
-    
-    -- ESP Tab
-    local espTab = AddTab("ESP")
-    CreateToggle(espTab, "Enable ESP", false, function(v) ESPEnabled = v; if not v then ClearESP() else UpdateESP() end end)
-    CreateToggle(espTab, "Skeleton", false, function(v) ESPSettings.Skeleton = v; UpdateESP() end)
-    CreateToggle(espTab, "Head Box", false, function(v) ESPSettings.HeadBox = v; UpdateESP() end)
-    CreateToggle(espTab, "Body Box", false, function(v) ESPSettings.BodyBox = v; UpdateESP() end)
-    CreateToggle(espTab, "Name", false, function(v) ESPSettings.Name = v; UpdateESP() end)
-    CreateToggle(espTab, "Health", false, function(v) ESPSettings.Health = v; UpdateESP() end)
-    CreateToggle(espTab, "Distance", false, function(v) ESPSettings.Distance = v; UpdateESP() end)
-    CreateToggle(espTab, "Tracer", false, function(v) ESPSettings.Tracer = v; UpdateESP() end)
-    CreateToggle(espTab, "Head Dot", false, function(v) ESPSettings.HeadDot = v; UpdateESP() end)
-    CreateColorPicker(espTab, "Skeleton Color", ESPColors.Skeleton, function(c) ESPColors.Skeleton = c; UpdateESP() end)
-    CreateColorPicker(espTab, "Head Box Color", ESPColors.HeadBox, function(c) ESPColors.HeadBox = c; UpdateESP() end)
-    CreateColorPicker(espTab, "Body Box Color", ESPColors.BodyBox, function(c) ESPColors.BodyBox = c; UpdateESP() end)
-    CreateColorPicker(espTab, "Tracer Color", ESPColors.Tracer, function(c) ESPColors.Tracer = c; UpdateESP() end)
-    
-    -- Aimbot Tab
-    local aimbotTab = AddTab("Aimbot")
-    CreateToggle(aimbotTab, "Enable Aimbot", false, function(v) AimbotEnabled = v; if not v then AimbotTarget = nil end; UpdateAimbotFOVCircle() end)
-    CreateDropdown(aimbotTab, "Aimbot Key", {"Q","E","LeftShift","Tab","RightMouseButton","X","C","F"}, "Q", function(opt)
-        local map = {Q=Enum.KeyCode.Q, E=Enum.KeyCode.E, LeftShift=Enum.KeyCode.LeftShift, Tab=Enum.KeyCode.Tab,
-                     RightMouseButton=Enum.UserInputType.MouseButton2, X=Enum.KeyCode.X, C=Enum.KeyCode.C, F=Enum.KeyCode.F}
-        AimbotKey = map[opt]
-    end)
-    CreateDropdown(aimbotTab, "Lock Part", {"Head","Torso"}, "Head", function(opt) AimbotLockPart = opt end)
-    CreateSlider(aimbotTab, "FOV Radius", 50, 500, 200, " px", function(v) AimbotFOV = v; UpdateAimbotFOVCircle() end)
-    CreateToggle(aimbotTab, "Show FOV Circle", true, function(v) AimbotShowFOV = v; UpdateAimbotFOVCircle() end)
-    CreateSlider(aimbotTab, "Smoothness", 0, 1, 0.3, "", function(v) AimbotSmoothness = v end)
-    
-    -- Local Player Tab
-    local localTab = AddTab("Local Player")
-    CreateSlider(localTab, "Walk Speed", 16, 100, 16, " studs/s", function(v) WalkSpeedValue = v; ApplyLocalStats() end)
-    CreateSlider(localTab, "Jump Power", 7.2, 100, 7.2, "", function(v) JumpPowerValue = v; ApplyLocalStats() end)
-    CreateToggle(localTab, "Fly", false, function(v) FlyEnabled = v; ToggleFly(v) end)
-    CreateSlider(localTab, "Fly Speed", 20, 200, 50, " studs/s", function(v) FlySpeed = v; if FlyEnabled then ToggleFly(true) end end)
-    CreateToggle(localTab, "No Clip", false, function(v)
-        NoClipEnabled = v
-        if LocalPlayer.Character then
-            local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid then humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, not v) end
-        end
-    end)
-    
-    -- Dragging logic
-    local dragging = false
-    local dragStart, startPos
-    titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = mainFrame.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-end
-
--- Create the UI
-CreateCustomUI()
-
--- ==================== FEATURE FUNCTIONS (same as before, but with corrected variable names) ====================
+-- ========== FEATURE FUNCTIONS ==========
 function ApplyLocalStats()
     local char = LocalPlayer.Character
     if char then
@@ -521,7 +310,7 @@ function ApplyLocalStats()
 end
 
 LocalPlayer.CharacterAdded:Connect(function(char)
-    wait(0.5)
+    task.wait(0.5)
     ApplyLocalStats()
     if FlyEnabled then ToggleFly(true) end
     if NoClipEnabled then
@@ -536,7 +325,6 @@ function ToggleFly(state)
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     local rootPart = char:FindFirstChild("HumanoidRootPart")
     if not humanoid or not rootPart then return end
-    
     if state then
         if FlyBodyVelocity then FlyBodyVelocity:Destroy() end
         FlyBodyVelocity = Instance.new("BodyVelocity")
@@ -544,7 +332,6 @@ function ToggleFly(state)
         FlyBodyVelocity.P = 1e5
         FlyBodyVelocity.Parent = rootPart
         humanoid.PlatformStand = true
-        
         local flyConnection
         flyConnection = RunService.RenderStepped:Connect(function()
             if not FlyEnabled or not char or not char.Parent then
@@ -568,9 +355,9 @@ function ToggleFly(state)
     end
 end
 
--- Hitbox Loop
+-- Hitbox loop
 coroutine.wrap(function()
-    while wait(0.1) do
+    while task.wait(0.1) do
         if HitboxEnabled then
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and player.Character then
@@ -609,7 +396,7 @@ coroutine.wrap(function()
     end
 end)()
 
--- ESP Functions (keep original, but ensure they reference ESPSettings)
+-- ESP Functions
 function ClearESP()
     for player, objects in pairs(ESPObjects) do
         for _, obj in pairs(objects) do
@@ -620,207 +407,240 @@ function ClearESP()
 end
 
 function CreateESP(player)
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+    local char = player.Character
+    local rootPart = char.HumanoidRootPart
+    local head = char:FindFirstChild("Head")
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+
     if ESPObjects[player] then
-        for _, obj in pairs(ESPObjects[player]) do
-            if obj and obj.Parent then
-                obj:Destroy()
-            end
-        end
+        for _, obj in pairs(ESPObjects[player]) do if obj and obj.Parent then obj:Destroy() end end
     end
     ESPObjects[player] = {}
-    
-    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-        return
-    end
-    
-    local character = player.Character
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    local head = character:FindFirstChild("Head")
-    
-    if not rootPart then return end
-    
-    -- Create ESP Billboard
+
+    -- Billboard for text
     local espGui = Instance.new("BillboardGui")
     espGui.Name = "ESP_Gui"
     espGui.Size = UDim2.new(0, 250, 0, 120)
-    espGui.StudsOffset = Vector3.new(0, 3.5, 0)
+    espGui.StudsOffset = Vector3.new(0, 3, 0)
     espGui.AlwaysOnTop = true
     espGui.Adornee = rootPart
     espGui.Parent = rootPart
-    
-    local espFrame = Instance.new("Frame")
-    espFrame.Size = UDim2.new(1, 0, 1, 0)
-    espFrame.BackgroundTransparency = 1
-    espFrame.Parent = espGui
-    
     table.insert(ESPObjects[player], espGui)
-    
-    -- Name Label (Improved styling)
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(1,0,1,0)
+    mainFrame.BackgroundTransparency = 1
+    mainFrame.Parent = espGui
+
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "Name"
-    nameLabel.Size = UDim2.new(1, -4, 0, 22)
-    nameLabel.Position = UDim2.new(0, 2, 0, 2)
-    nameLabel.BackgroundTransparency = 0.8
-    nameLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    nameLabel.BorderSizePixel = 0
+    nameLabel.Size = UDim2.new(1,-4,0,20)
+    nameLabel.Position = UDim2.new(0,2,0,2)
+    nameLabel.BackgroundTransparency = 0.7
+    nameLabel.BackgroundColor3 = Color3.fromRGB(0,0,0)
     nameLabel.Text = player.Name
-    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    nameLabel.TextSize = 16
-    nameLabel.TextStrokeTransparency = 0.5
-    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextColor3 = ESPColors.Name
+    nameLabel.TextSize = 14
+    nameLabel.Font = Library.Font
     nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-    nameLabel.Parent = espFrame
+    nameLabel.Parent = mainFrame
     table.insert(ESPObjects[player], nameLabel)
-    
-    -- Health Label (Improved styling)
+
     local healthLabel = Instance.new("TextLabel")
     healthLabel.Name = "Health"
-    healthLabel.Size = UDim2.new(1, -4, 0, 18)
-    healthLabel.Position = UDim2.new(0, 2, 0, 26)
-    healthLabel.BackgroundTransparency = 0.8
-    healthLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    healthLabel.BorderSizePixel = 0
-    healthLabel.Text = ""
-    healthLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-    healthLabel.TextSize = 14
-    healthLabel.TextStrokeTransparency = 0.5
-    healthLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    healthLabel.Font = Enum.Font.Gotham
+    healthLabel.Size = UDim2.new(1,-4,0,18)
+    healthLabel.Position = UDim2.new(0,2,0,24)
+    healthLabel.BackgroundTransparency = 0.7
+    healthLabel.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    healthLabel.TextColor3 = ESPColors.Health
+    healthLabel.TextSize = 13
+    healthLabel.Font = Library.Font
     healthLabel.TextXAlignment = Enum.TextXAlignment.Left
-    healthLabel.Parent = espFrame
+    healthLabel.Parent = mainFrame
     table.insert(ESPObjects[player], healthLabel)
-    
-    -- Distance Label (Improved styling)
+
     local distanceLabel = Instance.new("TextLabel")
     distanceLabel.Name = "Distance"
-    distanceLabel.Size = UDim2.new(1, -4, 0, 18)
-    distanceLabel.Position = UDim2.new(0, 2, 0, 46)
-    distanceLabel.BackgroundTransparency = 0.8
-    distanceLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    distanceLabel.BorderSizePixel = 0
-    distanceLabel.Text = ""
-    distanceLabel.TextColor3 = Color3.fromRGB(80, 200, 255)
-    distanceLabel.TextSize = 14
-    distanceLabel.TextStrokeTransparency = 0.5
-    distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    distanceLabel.Font = Enum.Font.Gotham
+    distanceLabel.Size = UDim2.new(1,-4,0,18)
+    distanceLabel.Position = UDim2.new(0,2,0,44)
+    distanceLabel.BackgroundTransparency = 0.7
+    distanceLabel.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    distanceLabel.TextColor3 = ESPColors.Distance
+    distanceLabel.TextSize = 13
+    distanceLabel.Font = Library.Font
     distanceLabel.TextXAlignment = Enum.TextXAlignment.Left
-    distanceLabel.Parent = espFrame
+    distanceLabel.Parent = mainFrame
     table.insert(ESPObjects[player], distanceLabel)
-    
-    -- Head Box (Improved styling)
+
+    -- Head Box
     if head then
         local headBox = Instance.new("BoxHandleAdornment")
-        headBox.Name = "ESP_Head"
-        headBox.Size = head.Size + Vector3.new(0.1, 0.1, 0.1)
-        headBox.Transparency = 0.7
-        headBox.Color3 = Color3.fromRGB(255, 50, 50)
+        headBox.Name = "ESP_HeadBox"
+        headBox.Size = head.Size + Vector3.new(0.2,0.2,0.2)
+        headBox.Transparency = 0.6
+        headBox.Color3 = ESPColors.HeadBox
         headBox.AlwaysOnTop = true
         headBox.Adornee = head
-        headBox.ZIndex = 2
         headBox.Parent = head
         table.insert(ESPObjects[player], headBox)
-        
-        -- Head outline
+
         local headOutline = Instance.new("SelectionBox")
-        headOutline.Name = "ESP_Head_Outline"
+        headOutline.Name = "ESP_HeadOutline"
         headOutline.Adornee = head
-        headOutline.Transparency = 0.8
-        headOutline.Color3 = Color3.fromRGB(255, 0, 0)
+        headOutline.Transparency = 0.7
+        headOutline.Color3 = ESPColors.HeadBox
         headOutline.Thickness = 0.15
         headOutline.Parent = head
         table.insert(ESPObjects[player], headOutline)
     end
-    
-    -- Body Box (Torso) (Improved styling)
-    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
+
+    -- Body Box
+    local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
     if torso then
         local bodyBox = Instance.new("BoxHandleAdornment")
-        bodyBox.Name = "ESP_Body"
-        bodyBox.Size = torso.Size + Vector3.new(0.1, 0.1, 0.1)
-        bodyBox.Transparency = 0.7
-        bodyBox.Color3 = Color3.fromRGB(50, 255, 50)
+        bodyBox.Name = "ESP_BodyBox"
+        bodyBox.Size = torso.Size + Vector3.new(0.2,0.2,0.2)
+        bodyBox.Transparency = 0.6
+        bodyBox.Color3 = ESPColors.BodyBox
         bodyBox.AlwaysOnTop = true
         bodyBox.Adornee = torso
-        bodyBox.ZIndex = 2
         bodyBox.Parent = torso
         table.insert(ESPObjects[player], bodyBox)
-        
-        -- Body outline
+
         local bodyOutline = Instance.new("SelectionBox")
-        bodyOutline.Name = "ESP_Body_Outline"
+        bodyOutline.Name = "ESP_BodyOutline"
         bodyOutline.Adornee = torso
-        bodyOutline.Transparency = 0.8
-        bodyOutline.Color3 = Color3.fromRGB(0, 255, 0)
+        bodyOutline.Transparency = 0.7
+        bodyOutline.Color3 = ESPColors.BodyBox
         bodyOutline.Thickness = 0.15
         bodyOutline.Parent = torso
         table.insert(ESPObjects[player], bodyOutline)
     end
-    
-    -- Skeleton Lines
-    local function createLine(part1, part2)
-        local attachment1 = Instance.new("Attachment")
-        attachment1.Parent = part1
-        
-        local attachment2 = Instance.new("Attachment")
-        attachment2.Parent = part2
-        
-        local line = Instance.new("Beam")
-        line.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
-        line.Transparency = NumberSequence.new(0.4)
-        line.Width0 = 0.15
-        line.Width1 = 0.15
-        line.LightEmission = 0.3
-        line.LightInfluence = 0.5
-        line.Attachment0 = attachment1
-        line.Attachment1 = attachment2
-        line.Parent = part1
-        
-        table.insert(ESPObjects[player], attachment1)
-        table.insert(ESPObjects[player], attachment2)
-        table.insert(ESPObjects[player], line)
+
+    -- Head Dot
+    if head then
+        local headDot = Instance.new("BillboardGui")
+        headDot.Name = "ESP_HeadDot"
+        headDot.Size = UDim2.new(0,8,0,8)
+        headDot.AlwaysOnTop = true
+        headDot.Adornee = head
+        local dotFrame = Instance.new("Frame")
+        dotFrame.Size = UDim2.new(1,0,1,0)
+        dotFrame.BackgroundColor3 = ESPColors.HeadDot
+        dotFrame.BorderSizePixel = 0
+        dotFrame.Parent = headDot
+        headDot.Parent = head
+        table.insert(ESPObjects[player], headDot)
     end
-    
-    -- Create skeleton connections
-    if rootPart and head then
-        createLine(rootPart, head)
+
+    -- Skeleton lines
+    local function createLine(partA, partB)
+        if not partA or not partB then return end
+        local attA = Instance.new("Attachment", partA)
+        local attB = Instance.new("Attachment", partB)
+        local beam = Instance.new("Beam")
+        beam.Color = ColorSequence.new(ESPColors.Skeleton)
+        beam.Transparency = NumberSequence.new(0.3)
+        beam.Width0 = 0.1
+        beam.Width1 = 0.1
+        beam.Attachment0 = attA
+        beam.Attachment1 = attB
+        beam.Parent = partA
+        table.insert(ESPObjects[player], attA)
+        table.insert(ESPObjects[player], attB)
+        table.insert(ESPObjects[player], beam)
     end
-    
-    local leftArm = character:FindFirstChild("LeftUpperArm") or character:FindFirstChild("Left Arm")
-    local rightArm = character:FindFirstChild("RightUpperArm") or character:FindFirstChild("Right Arm")
-    local leftLeg = character:FindFirstChild("LeftUpperLeg") or character:FindFirstChild("Left Leg")
-    local rightLeg = character:FindFirstChild("RightUpperLeg") or character:FindFirstChild("Right Leg")
-    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso")
-    
+    local leftArm = char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm")
+    local rightArm = char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm")
+    local leftLeg = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg")
+    local rightLeg = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg")
     if torso then
-        if rootPart then createLine(torso, rootPart) end
+        createLine(torso, rootPart)
         if leftArm then createLine(torso, leftArm) end
         if rightArm then createLine(torso, rightArm) end
-        if leftLeg and rootPart then createLine(rootPart, leftLeg) end
-        if rightLeg and rootPart then createLine(rootPart, rightLeg) end
+        if leftLeg then createLine(rootPart, leftLeg) end
+        if rightLeg then createLine(rootPart, rightLeg) end
+        if head then createLine(torso, head) end
     end
-end
 
-function UpdateESP()
-    ClearESP()
-    if not ESPEnabled then return end
-    
-    for _, player in pairs(game[players]:GetPlayers()) do
-        if player ~= plr and player.Character then
-            CreateESP(player)
-        end
-    end
+    -- Tracer
+    local tracer = Instance.new("LineHandleAdornment")
+    tracer.Name = "ESP_Tracer"
+    tracer.AlwaysOnTop = true
+    tracer.Thickness = 0.1
+    tracer.Color3 = ESPColors.Tracer
+    tracer.Transparency = 0.5
+    tracer.Parent = rootPart
+    table.insert(ESPObjects[player], tracer)
 end
 
 function UpdateESP()
     ClearESP()
     if not ESPEnabled then return end
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then CreateESP(player) end
+        if player ~= LocalPlayer and player.Character then
+            CreateESP(player)
+        end
     end
 end
+
+-- ESP update loop (visibility & dynamic info)
+coroutine.wrap(function()
+    while task.wait(0.1) do
+        if ESPEnabled then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local objects = ESPObjects[player]
+                    if objects then
+                        local rootPart = player.Character.HumanoidRootPart
+                        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                        local distance = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
+                                       (rootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude or 0
+                        for _, obj in pairs(objects) do
+                            if obj and obj.Parent then
+                                if obj.Name == "Distance" then
+                                    obj.Visible = ESPSettings.Distance
+                                    if ESPSettings.Distance then obj.Text = string.format("Distance: %.1f", distance) end
+                                elseif obj.Name == "Health" then
+                                    obj.Visible = ESPSettings.Health
+                                    if ESPSettings.Health and humanoid then obj.Text = string.format("Health: %d/%d", humanoid.Health, humanoid.MaxHealth) end
+                                elseif obj.Name == "Name" then
+                                    obj.Visible = ESPSettings.Name
+                                elseif obj.Name == "ESP_HeadBox" or obj.Name == "ESP_HeadOutline" then
+                                    obj.Visible = ESPSettings.HeadBox
+                                elseif obj.Name == "ESP_BodyBox" or obj.Name == "ESP_BodyOutline" then
+                                    obj.Visible = ESPSettings.BodyBox
+                                elseif obj.Name == "ESP_HeadDot" then
+                                    obj.Visible = ESPSettings.HeadDot
+                                elseif obj.ClassName == "Beam" then
+                                    obj.Visible = ESPSettings.Skeleton
+                                elseif obj.Name == "ESP_Tracer" then
+                                    obj.Visible = ESPSettings.Tracer
+                                    if ESPSettings.Tracer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                                        obj.PointA = Camera.CFrame.Position
+                                        obj.PointB = rootPart.Position
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)()
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function() task.wait(1); if ESPEnabled then CreateESP(player) end end)
+    if ESPEnabled then task.wait(1); CreateESP(player) end
+end)
+Players.PlayerRemoving:Connect(function(player)
+    if ESPObjects[player] then
+        for _, obj in pairs(ESPObjects[player]) do if obj and obj.Parent then obj:Destroy() end end
+        ESPObjects[player] = nil
+    end
+end)
 
 -- Aimbot FOV circle
 function UpdateAimbotFOVCircle()
@@ -834,7 +654,8 @@ function UpdateAimbotFOVCircle()
             circle.BackgroundColor3 = Color3.fromRGB(255,0,0)
             circle.BorderSizePixel = 2
             circle.BorderColor3 = Color3.fromRGB(255,255,255)
-            Instance.new("UICorner", circle).CornerRadius = UDim.new(1,0)
+            local corner = Instance.new("UICorner", circle)
+            corner.CornerRadius = UDim.new(1,0)
             circle.Parent = CoreGui
             AimbotFOVCircle = circle
         else
@@ -857,7 +678,10 @@ function GetClosestPlayerInFOV()
                 local screenPos, onScreen = Camera:WorldToScreenPoint(part.Position)
                 if onScreen then
                     local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-                    if dist < closestDist then closest, closestDist = player, dist end
+                    if dist < closestDist then
+                        closestDist = dist
+                        closest = player
+                    end
                 end
             end
         end
@@ -893,8 +717,257 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Initialization
-wait(1)
+-- ========== UI CREATION ==========
+local MainWindow = Instances:Create("Frame", {
+    Parent = Library.Holder.Instance,
+    Name = "MainWindow",
+    Size = UDim2.new(0, 520, 0, 420),
+    Position = UDim2.new(0.5, -260, 0.5, -210),
+    BackgroundColor3 = Library.Theme.Background,
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    ClipsDescendants = true
+}):AddToTheme({ BackgroundColor3 = "Background" })
+Instances:Create("UICorner", { Parent = MainWindow.Instance, CornerRadius = UDim.new(0, 8) })
+Instances:Create("UIStroke", { Parent = MainWindow.Instance, Color = Library.Theme.Border, Thickness = 1, Transparency = 0.8 }):AddToTheme({ Color = "Border" })
+
+-- Title bar
+local TitleBar = Instances:Create("Frame", {
+    Parent = MainWindow.Instance,
+    Size = UDim2.new(1, 0, 0, 35),
+    BackgroundColor3 = Library.Theme.Inline,
+    BackgroundTransparency = 0.1
+}):AddToTheme({ BackgroundColor3 = "Inline" })
+Instances:Create("UICorner", { Parent = TitleBar.Instance, CornerRadius = UDim.new(0, 8) })
+local TitleText = Instances:Create("TextLabel", {
+    Parent = TitleBar.Instance,
+    Size = UDim2.new(1, -40, 1, 0),
+    Position = UDim2.new(0, 10, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "Custom Script Hub",
+    TextColor3 = Library.Theme.Text,
+    TextSize = 16,
+    FontFace = Library.Font,
+    TextXAlignment = Enum.TextXAlignment.Left
+}):AddToTheme({ TextColor3 = "Text" })
+local CloseBtn = Instances:Create("TextButton", {
+    Parent = TitleBar.Instance,
+    Size = UDim2.new(0, 30, 1, 0),
+    Position = UDim2.new(1, -30, 0, 0),
+    BackgroundColor3 = Library.Theme.Element,
+    Text = "X",
+    TextColor3 = Library.Theme.Text,
+    TextSize = 14,
+    FontFace = Library.Font
+}):AddToTheme({ BackgroundColor3 = "Element", TextColor3 = "Text" })
+CloseBtn:Connect("MouseButton1Click", function() Library.Holder:Clean() end)
+
+-- Tab container
+local TabContainer = Instances:Create("Frame", {
+    Parent = MainWindow.Instance,
+    Size = UDim2.new(1, 0, 0, 40),
+    Position = UDim2.new(0, 0, 0, 35),
+    BackgroundTransparency = 1
+})
+local ContentFrame = Instances:Create("Frame", {
+    Parent = MainWindow.Instance,
+    Size = UDim2.new(1, -20, 1, -85),
+    Position = UDim2.new(0, 10, 0, 80),
+    BackgroundTransparency = 1
+})
+local ScrollFrame = Instances:Create("ScrollingFrame", {
+    Parent = ContentFrame.Instance,
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 6
+})
+local UIList = Instances:Create("UIListLayout", { Parent = ScrollFrame.Instance, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+
+local Tabs = {}
+local function AddTab(name)
+    local btn = Instances:Create("TextButton", {
+        Parent = TabContainer.Instance,
+        Size = UDim2.new(0, 100, 1, -6),
+        Position = UDim2.new(#Tabs * 0.19 + 0.02, 0, 0, 3),
+        BackgroundColor3 = Library.Theme.Element,
+        Text = name,
+        TextColor3 = Library.Theme.Text,
+        TextSize = 14,
+        FontFace = Library.Font
+    }):AddToTheme({ BackgroundColor3 = "Element", TextColor3 = "Text" })
+    Instances:Create("UICorner", { Parent = btn.Instance, CornerRadius = UDim.new(0, 4) })
+    local content = Instances:Create("Frame", {
+        Parent = ScrollFrame.Instance,
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Visible = false
+    })
+    local list = Instances:Create("UIListLayout", { Parent = content.Instance, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
+    table.insert(Tabs, { btn = btn, content = content })
+    btn:Connect("MouseButton1Click", function()
+        for _, t in pairs(Tabs) do
+            t.content.Instance.Visible = false
+            t.btn.Instance.BackgroundColor3 = Library.Theme.Element
+        end
+        content.Instance.Visible = true
+        btn.Instance.BackgroundColor3 = Library.Theme.Accent
+        -- Update canvas height
+        local total = 0
+        for _, child in pairs(content.Instance:GetChildren()) do
+            if child:IsA("Frame") then
+                total = total + child.Size.Y.Offset + list.Padding.Offset
+            end
+        end
+        ScrollFrame.Instance.CanvasSize = UDim2.new(0, 0, 0, total)
+    end)
+    if #Tabs == 1 then btn:Connect("MouseButton1Click")() end
+    return content
+end
+
+-- Helper functions to add UI elements
+local function AddToggle(parent, name, default, callback)
+    local frame = Instances:Create("Frame", { Parent = parent.Instance, Size = UDim2.new(1, -10, 0, 36), BackgroundColor3 = Library.Theme.Element, BackgroundTransparency = 0.2 }):AddToTheme({ BackgroundColor3 = "Element" })
+    Instances:Create("UICorner", { Parent = frame.Instance, CornerRadius = UDim.new(0, 4) })
+    local label = Instances:Create("TextLabel", { Parent = frame.Instance, Size = UDim2.new(0.7, -10, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = name, TextColor3 = Library.Theme.Text, TextSize = 14, FontFace = Library.Font, TextXAlignment = Enum.TextXAlignment.Left }):AddToTheme({ TextColor3 = "Text" })
+    local btn = Instances:Create("TextButton", { Parent = frame.Instance, Size = UDim2.new(0, 60, 0, 26), Position = UDim2.new(1, -70, 0.5, -13), BackgroundColor3 = default and Color3.fromRGB(0,200,0) or Color3.fromRGB(80,80,80), Text = default and "ON" or "OFF", TextColor3 = Color3.fromRGB(255,255,255), TextSize = 12, FontFace = Library.Font })
+    Instances:Create("UICorner", { Parent = btn.Instance, CornerRadius = UDim.new(0, 4) })
+    local state = default
+    btn:Connect("MouseButton1Click", function()
+        state = not state
+        btn.Instance.BackgroundColor3 = state and Color3.fromRGB(0,200,0) or Color3.fromRGB(80,80,80)
+        btn.Instance.Text = state and "ON" or "OFF"
+        if callback then callback(state) end
+    end)
+    return frame
+end
+
+local function AddSlider(parent, name, min, max, default, suffix, callback)
+    local frame = Instances:Create("Frame", { Parent = parent.Instance, Size = UDim2.new(1, -10, 0, 55), BackgroundColor3 = Library.Theme.Element, BackgroundTransparency = 0.2 }):AddToTheme({ BackgroundColor3 = "Element" })
+    Instances:Create("UICorner", { Parent = frame.Instance, CornerRadius = UDim.new(0, 4) })
+    local label = Instances:Create("TextLabel", { Parent = frame.Instance, Size = UDim2.new(1, -10, 0, 22), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Text = name .. ": " .. tostring(default) .. suffix, TextColor3 = Library.Theme.Text, TextSize = 13, FontFace = Library.Font, TextXAlignment = Enum.TextXAlignment.Left }):AddToTheme({ TextColor3 = "Text" })
+    local slider = Instances:Create("Frame", { Parent = frame.Instance, Size = UDim2.new(0.9, 0, 0, 4), Position = UDim2.new(0.05, 0, 0.7, 0), BackgroundColor3 = Color3.fromRGB(70,70,75), BorderSizePixel = 0 })
+    local fill = Instances:Create("Frame", { Parent = slider.Instance, Size = UDim2.new((default-min)/(max-min), 0, 1, 0), BackgroundColor3 = Library.Theme.Accent, BorderSizePixel = 0 }):AddToTheme({ BackgroundColor3 = "Accent" })
+    local value = default
+    local dragging = false
+    local function update(x)
+        local rel = math.clamp((x - slider.Instance.AbsolutePosition.X) / slider.Instance.AbsoluteSize.X, 0, 1)
+        value = min + (max-min)*rel
+        value = math.floor(value * 100) / 100
+        fill.Instance.Size = UDim2.new(rel, 0, 1, 0)
+        label.Instance.Text = name .. ": " .. tostring(value) .. suffix
+        if callback then callback(value) end
+    end
+    slider:Connect("InputBegan", function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            update(input.Position.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then update(input.Position.X) end
+    end)
+    return frame
+end
+
+local function AddColorPicker(parent, name, defaultColor, callback)
+    local frame = Instances:Create("Frame", { Parent = parent.Instance, Size = UDim2.new(1, -10, 0, 42), BackgroundColor3 = Library.Theme.Element, BackgroundTransparency = 0.2 }):AddToTheme({ BackgroundColor3 = "Element" })
+    Instances:Create("UICorner", { Parent = frame.Instance, CornerRadius = UDim.new(0, 4) })
+    local label = Instances:Create("TextLabel", { Parent = frame.Instance, Size = UDim2.new(0.6, -10, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = name, TextColor3 = Library.Theme.Text, TextSize = 13, FontFace = Library.Font, TextXAlignment = Enum.TextXAlignment.Left }):AddToTheme({ TextColor3 = "Text" })
+    local colorDisplay = Instances:Create("Frame", { Parent = frame.Instance, Size = UDim2.new(0, 50, 0, 26), Position = UDim2.new(1, -60, 0.5, -13), BackgroundColor3 = defaultColor, BorderSizePixel = 1, BorderColor3 = Color3.fromRGB(255,255,255) })
+    Instances:Create("UICorner", { Parent = colorDisplay.Instance, CornerRadius = UDim.new(0, 4) })
+    local colors = {Color3.fromRGB(255,0,0), Color3.fromRGB(0,255,0), Color3.fromRGB(0,0,255), Color3.fromRGB(255,255,0), Color3.fromRGB(255,0,255), Color3.fromRGB(0,255,255)}
+    local idx = 1
+    colorDisplay:Connect("MouseButton1Click", function()
+        idx = idx % #colors + 1
+        local newColor = colors[idx]
+        colorDisplay.Instance.BackgroundColor3 = newColor
+        if callback then callback(newColor) end
+    end)
+    return frame
+end
+
+local function AddDropdown(parent, name, options, default, callback)
+    local frame = Instances:Create("Frame", { Parent = parent.Instance, Size = UDim2.new(1, -10, 0, 42), BackgroundColor3 = Library.Theme.Element, BackgroundTransparency = 0.2 }):AddToTheme({ BackgroundColor3 = "Element" })
+    Instances:Create("UICorner", { Parent = frame.Instance, CornerRadius = UDim.new(0, 4) })
+    local label = Instances:Create("TextLabel", { Parent = frame.Instance, Size = UDim2.new(0.4, -10, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = name, TextColor3 = Library.Theme.Text, TextSize = 13, FontFace = Library.Font, TextXAlignment = Enum.TextXAlignment.Left }):AddToTheme({ TextColor3 = "Text" })
+    local btn = Instances:Create("TextButton", { Parent = frame.Instance, Size = UDim2.new(0, 120, 0, 28), Position = UDim2.new(1, -130, 0.5, -14), BackgroundColor3 = Library.Theme.Inline, Text = default, TextColor3 = Library.Theme.Text, TextSize = 12, FontFace = Library.Font }):AddToTheme({ BackgroundColor3 = "Inline", TextColor3 = "Text" })
+    Instances:Create("UICorner", { Parent = btn.Instance, CornerRadius = UDim.new(0, 4) })
+    local isOpen = false
+    local optionList = nil
+    btn:Connect("MouseButton1Click", function()
+        if isOpen then if optionList then optionList:Destroy() end isOpen = false return end
+        optionList = Instances:Create("Frame", { Parent = frame.Instance, Size = UDim2.new(0, 120, 0, #options * 28), Position = UDim2.new(1, -130, 0, 30), BackgroundColor3 = Library.Theme.Element, BorderSizePixel = 0 }):AddToTheme({ BackgroundColor3 = "Element" })
+        Instances:Create("UICorner", { Parent = optionList.Instance, CornerRadius = UDim.new(0, 4) })
+        local layout = Instances:Create("UIListLayout", { Parent = optionList.Instance, Padding = UDim.new(0, 2) })
+        for _, opt in ipairs(options) do
+            local optBtn = Instances:Create("TextButton", { Parent = optionList.Instance, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Library.Theme.Inline, Text = opt, TextColor3 = Library.Theme.Text, TextSize = 12, FontFace = Library.Font }):AddToTheme({ BackgroundColor3 = "Inline", TextColor3 = "Text" })
+            optBtn:Connect("MouseButton1Click", function()
+                btn.Instance.Text = opt
+                if callback then callback(opt) end
+                optionList:Destroy()
+                isOpen = false
+            end)
+        end
+        isOpen = true
+    end)
+    return frame
+end
+
+-- Build Tabs
+local hitboxTab = AddTab("Hitbox Extender")
+AddToggle(hitboxTab, "Enable Hitbox", false, function(v) HitboxEnabled = v end)
+AddSlider(hitboxTab, "Hitbox Size", 1, 50, 13, " studs", function(v) HitboxSize = v end)
+AddSlider(hitboxTab, "Hitbox Transparency", 0, 1, 0.5, "", function(v) HitboxTransparency = v end)
+AddColorPicker(hitboxTab, "Hitbox Color", HitboxColor, function(c) HitboxColor = c end)
+AddToggle(hitboxTab, "Head Dot (ESP style)", false, function(v) HitboxHeadDot = v end)
+
+local espTab = AddTab("ESP")
+AddToggle(espTab, "Enable ESP", false, function(v) ESPEnabled = v; if not v then ClearESP() else UpdateESP() end end)
+AddToggle(espTab, "Skeleton", false, function(v) ESPSettings.Skeleton = v; UpdateESP() end)
+AddToggle(espTab, "Head Box", false, function(v) ESPSettings.HeadBox = v; UpdateESP() end)
+AddToggle(espTab, "Body Box", false, function(v) ESPSettings.BodyBox = v; UpdateESP() end)
+AddToggle(espTab, "Name", false, function(v) ESPSettings.Name = v; UpdateESP() end)
+AddToggle(espTab, "Health", false, function(v) ESPSettings.Health = v; UpdateESP() end)
+AddToggle(espTab, "Distance", false, function(v) ESPSettings.Distance = v; UpdateESP() end)
+AddToggle(espTab, "Tracer", false, function(v) ESPSettings.Tracer = v; UpdateESP() end)
+AddToggle(espTab, "Head Dot", false, function(v) ESPSettings.HeadDot = v; UpdateESP() end)
+AddColorPicker(espTab, "Skeleton Color", ESPColors.Skeleton, function(c) ESPColors.Skeleton = c; UpdateESP() end)
+AddColorPicker(espTab, "Head Box Color", ESPColors.HeadBox, function(c) ESPColors.HeadBox = c; UpdateESP() end)
+AddColorPicker(espTab, "Body Box Color", ESPColors.BodyBox, function(c) ESPColors.BodyBox = c; UpdateESP() end)
+AddColorPicker(espTab, "Tracer Color", ESPColors.Tracer, function(c) ESPColors.Tracer = c; UpdateESP() end)
+
+local aimbotTab = AddTab("Aimbot")
+AddToggle(aimbotTab, "Enable Aimbot", false, function(v) AimbotEnabled = v; if not v then AimbotTarget = nil end; UpdateAimbotFOVCircle() end)
+AddDropdown(aimbotTab, "Aimbot Key", {"Q","E","LeftShift","Tab","RightMouseButton","X","C","F"}, "Q", function(opt)
+    local map = {Q=Enum.KeyCode.Q, E=Enum.KeyCode.E, LeftShift=Enum.KeyCode.LeftShift, Tab=Enum.KeyCode.Tab,
+                 RightMouseButton=Enum.UserInputType.MouseButton2, X=Enum.KeyCode.X, C=Enum.KeyCode.C, F=Enum.KeyCode.F}
+    AimbotKey = map[opt]
+end)
+AddDropdown(aimbotTab, "Lock Part", {"Head","Torso"}, "Head", function(opt) AimbotLockPart = opt end)
+AddSlider(aimbotTab, "FOV Radius", 50, 500, 200, " px", function(v) AimbotFOV = v; UpdateAimbotFOVCircle() end)
+AddToggle(aimbotTab, "Show FOV Circle", true, function(v) AimbotShowFOV = v; UpdateAimbotFOVCircle() end)
+AddSlider(aimbotTab, "Smoothness", 0, 1, 0.3, "", function(v) AimbotSmoothness = v end)
+
+local localTab = AddTab("Local Player")
+AddSlider(localTab, "Walk Speed", 16, 100, 16, " studs/s", function(v) WalkSpeedValue = v; ApplyLocalStats() end)
+AddSlider(localTab, "Jump Power", 7.2, 100, 7.2, "", function(v) JumpPowerValue = v; ApplyLocalStats() end)
+AddToggle(localTab, "Fly", false, function(v) FlyEnabled = v; ToggleFly(v) end)
+AddSlider(localTab, "Fly Speed", 20, 200, 50, " studs/s", function(v) FlySpeed = v; if FlyEnabled then ToggleFly(true) end end)
+AddToggle(localTab, "No Clip", false, function(v)
+    NoClipEnabled = v
+    if LocalPlayer.Character then
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, not v) end
+    end
+end)
+
+-- Make window draggable
+MainWindow:MakeDraggable()
+
+-- Initialize
+task.wait(1)
 ApplyLocalStats()
 UpdateESP()
 UpdateAimbotFOVCircle()
